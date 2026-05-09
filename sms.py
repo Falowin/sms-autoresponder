@@ -1,5 +1,4 @@
 import re
-from twilio.rest import Client
 
 
 def normalize_phone(phone: str) -> str:
@@ -12,15 +11,3 @@ def normalize_phone(phone: str) -> str:
     elif digits.startswith("+"):
         return digits
     return f"+{digits}"
-
-
-def send_sms(account_sid: str, auth_token: str,
-             from_number: str, to_number: str, body: str) -> str:
-    """Send SMS via Twilio. Returns message SID."""
-    client = Client(account_sid, auth_token)
-    message = client.messages.create(
-        body=body,
-        from_=from_number,
-        to=normalize_phone(to_number)
-    )
-    return message.sid
