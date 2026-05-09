@@ -1,3 +1,4 @@
+import httpx
 from anthropic import AsyncAnthropic
 
 KIRILL_STYLE = """You write SMS responses exactly like Kirill, owner of Fresh Furnish — an upholstery cleaning business in the Seattle/WA area.
@@ -53,7 +54,9 @@ Style:
 async def generate_variants(api_key: str, name: str, service: str,
                              client_message: str) -> list[str]:
     """Generate 3 SMS variants: 2 in Kirill's natural style + 1 sales-focused."""
-    client = AsyncAnthropic(api_key=api_key)
+    # Use custom httpx client to avoid 'proxies' kwarg issue on httpx>=0.28
+    http_client = httpx.AsyncClient()
+    client = AsyncAnthropic(api_key=api_key, http_client=http_client)
 
     from datetime import datetime
     hour = datetime.now().hour
@@ -72,7 +75,7 @@ Current greeting: {greeting}"""
 
     # Generate 2 variants in Kirill's natural style
     resp1 = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-3-5-haiku-20241022",
         max_tokens=600,
         system=KIRILL_STYLE,
         messages=[{"role": "user", "content": f"""{lead_context}
@@ -86,7 +89,7 @@ Return ONLY the two message texts."""}]
 
     # Generate 1 sales-focused variant
     resp2 = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-3-5-haiku-20241022",
         max_tokens=300,
         system=SALES_STYLE,
         messages=[{"role": "user", "content": f"""{lead_context}
