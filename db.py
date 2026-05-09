@@ -1,4 +1,5 @@
 import json
+import uuid
 import aiosqlite
 from typing import Optional
 
@@ -20,12 +21,10 @@ async def init_db(path: str):
             )
         """)
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS pending_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+            CREATE TABLE IF NOT EXISTS variants (
+                id TEXT PRIMARY KEY,
                 phone TEXT NOT NULL,
-                direction TEXT NOT NULL,  -- 'outbound' or 'inbound_reply'
-                draft_text TEXT NOT NULL,
-                telegram_message_id INTEGER,
+                text TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -63,51 +62,23 @@ async def get_conversation(path: str, phone: str) -> Optional[dict]:
     return None
 
 
-async def append_history(path: str, phone: str, role: str, content: str):
-    conv = await get_conversation(path, phone)
-    if not conv:
-        return
-    history = conv["history"]
-    history.append({"role": role, "content": content})
+async def save_variant(path: str, phone: str, text: str) -> str:
+    """Save a response variant and return its short ID."""
+    vid = str(uuid.uuid4())[:8]
     async with aiosqlite.connect(path) as db:
         await db.execute(
-            "UPDATE conversations SET history=?, updated_at=CURRENT_TIMESTAMP WHERE phone=?",
-            (json.dumps(history), phone)
+            "INSERT INTO variants (id, phone, text) VALUES (?, ?, ?)",
+            (vid, phone, text)
         )
         await db.commit()
+    return vid
 
 
-async def update_status(path: str, phone: str, status: str):
+async def get_variant(path: str, vid: str) -> Optional[str]:
+    """Fetch variant text by ID."""
     async with aiosqlite.connect(path) as db:
-        await db.execute(
-            "UPDATE conversations SET status=?, updated_at=CURRENT_TIMESTAMP WHERE phone=?",
-            (status, phone)
-        )
-        await db.commit()
-
-
-async def save_pending(path: str, phone: str, direction: str, draft_text: str,
-                        telegram_message_id: Optional[int] = None) -> int:
-    async with aiosqlite.connect(path) as db:
-        cursor = await db.execute("""
-            INSERT INTO pending_messages (phone, direction, draft_text, telegram_message_id)
-            VALUES (?, ?, ?, ?)
-        """, (phone, direction, draft_text, telegram_message_id))
-        await db.commit()
-        return cursor.lastrowid
-
-
-async def get_pending(path: str, pending_id: int) -> Optional[dict]:
-    async with aiosqlite.connect(path) as db:
-        db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM pending_messages WHERE id = ?", (pending_id,)
+            "SELECT text FROM variants WHERE id = ?", (vid,)
         ) as cursor:
             row = await cursor.fetchone()
-            return dict(row) if row else None
-
-
-async def delete_pending(path: str, pending_id: int):
-    async with aiosqlite.connect(path) as db:
-        await db.execute("DELETE FROM pending_messages WHERE id = ?", (pending_id,))
-        await db.commit()
+    return row[0] if row else None

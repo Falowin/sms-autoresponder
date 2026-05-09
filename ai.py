@@ -1,11 +1,10 @@
 from anthropic import AsyncAnthropic
 
-SYSTEM_PROMPT = """You are a friendly customer service assistant for an upholstery cleaning business.
-Your job is to respond to new service requests and continue conversations with clients via SMS.
+SYSTEM_PROMPT = """You are a friendly customer service assistant for Fresh Furnish — a professional upholstery cleaning business.
 
 Business info:
 - We clean all types of upholstered furniture: couches, sofas, chairs, sectionals, ottomans, mattresses
-- We provide in-home cleaning service
+- We provide in-home cleaning service in the Seattle/Bothell, WA area
 - We are professional, fast, and affordable
 
 Your SMS response rules:
@@ -13,15 +12,14 @@ Your SMS response rules:
 - Be warm and professional
 - Always address the client by first name
 - Reference their specific furniture/service request
-- For the FIRST message: welcome them + ask 1 clarifying question (e.g. size/number of pieces, preferred day/time, zip code for scheduling)
-- For follow-up messages: answer questions, provide info, guide toward booking an appointment
-- Never write long paragraphs
+- Welcome them and ask 1 clarifying question (e.g. preferred day/time, number of pieces, zip code)
 - Never use markdown, bullet points, or special formatting — plain text only
 - End goal is always to schedule a service appointment"""
 
 
-async def generate_first_response(api_key: str, name: str, service: str,
-                                   client_message: str) -> str:
+async def generate_variants(api_key: str, name: str, service: str,
+                             client_message: str, n: int = 2) -> list[str]:
+    """Generate n different SMS response variants for a new lead."""
     client = AsyncAnthropic(api_key=api_key)
 
     user_prompt = f"""New service request:
@@ -29,34 +27,17 @@ async def generate_first_response(api_key: str, name: str, service: str,
 - Requested service: {service}
 - Client's message: {client_message}
 
-Write a short, friendly SMS response to this new lead."""
+Write {n} different short SMS responses to this lead.
+Make each variant slightly different in tone or phrasing.
+Separate variants with exactly this marker on its own line: ---VARIANT---
+Return ONLY the message texts, nothing else."""
 
     message = await client.messages.create(
         model="claude-3-5-haiku-20241022",
-        max_tokens=200,
+        max_tokens=500,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}]
     )
-    return message.content[0].text.strip()
-
-
-async def generate_reply(api_key: str, name: str, service: str,
-                          history: list, client_reply: str) -> str:
-    client = AsyncAnthropic(api_key=api_key)
-
-    # Build conversation history for Claude
-    messages = []
-    for msg in history:
-        messages.append({"role": msg["role"], "content": msg["content"]})
-    messages.append({"role": "user", "content": client_reply})
-
-    context = f"Client: {name}, Service: {service}\n\nContinue the SMS conversation:"
-    messages.insert(0, {"role": "user", "content": context})
-
-    message = await client.messages.create(
-        model="claude-3-5-haiku-20241022",
-        max_tokens=200,
-        system=SYSTEM_PROMPT,
-        messages=messages
-    )
-    return message.content[0].text.strip()
+    text = message.content[0].text.strip()
+    parts = [v.strip() for v in text.split("---VARIANT---") if v.strip()]
+    return parts[:n] if len(parts) >= n else parts or [text]

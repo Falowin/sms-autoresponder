@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import re
 from contextlib import asynccontextmanager
@@ -61,8 +60,10 @@ async def lifespan(app: FastAPI):
 
     # Set lead bot webhook
     lead_bot = Bot(token=config.telegram_lead_bot_token)
+    await lead_bot.delete_webhook(drop_pending_updates=True)
     await lead_bot.set_webhook(
-        url=f"{config.webhook_base_url}/telegram/lead/webhook"
+        url=f"{config.webhook_base_url}/telegram/lead/webhook",
+        allowed_updates=["message", "channel_post", "edited_message", "edited_channel_post"],
     )
 
     logger.info("✅ Bots started, webhooks set")
@@ -101,36 +102,39 @@ async def lead_webhook(request: Request):
         return Response("ok")
 
     phone = normalize_phone(lead["phone"])
-    name = lead["name"]
-    service = lead["service"]
-    client_message = lead["message"]
+    lead["phone"] = phone
 
     # Save conversation
     await db.upsert_conversation(
-        config.database_path, phone, name, lead["email"], service, client_message
+        config.database_path, phone, lead["name"], lead["email"],
+        lead["service"], lead["message"]
     )
 
-    # Generate AI draft
+    # Generate 2 AI variants
     try:
-        draft = await ai.generate_first_response(
-            config.anthropic_api_key, name, service, client_message
+        variants = await ai.generate_variants(
+            config.anthropic_api_key,
+            lead["name"],
+            lead["service"],
+            lead["message"],
+            n=2,
         )
     except Exception as e:
         logger.error(f"AI generation failed: {e}")
-        draft = f"Hi {name}! Thanks for reaching out about your {service}. We'd love to help! What's the best time for us to schedule the cleaning?"
+        variants = [
+            f"Hi {lead['name']}! Thanks for reaching out about your {lead['service']}. We'd love to help! What's the best time for a cleaning?",
+            f"Hello {lead['name']}! We specialize in {lead['service']} cleaning. When would be a good time to schedule? We're available 7 days a week!",
+        ]
 
-    # Save as pending
-    pending_id = await db.save_pending(
-        config.database_path, phone, "outbound", draft
-    )
+    # Save variants to DB and collect their IDs
+    variant_ids = []
+    for v in variants:
+        vid = await db.save_variant(config.database_path, phone, v)
+        variant_ids.append(vid)
 
-    # Get conversation for moderation message
-    conv = await db.get_conversation(config.database_path, phone)
-
-    # Send to moderation bot
-    bot_instance = mod_app.bot
-    await mod_bot.send_for_moderation(
-        bot_instance, config, pending_id, conv, draft, "outbound"
+    # Send to moderation bot with copy buttons
+    await mod_bot.send_lead_with_variants(
+        mod_app.bot, config, lead, variants, variant_ids
     )
 
     return Response("ok")
@@ -143,66 +147,6 @@ async def mod_webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, mod_app.bot)
     await mod_app.process_update(update)
-    return Response("ok")
-
-
-# ─── Twilio incoming SMS ─────────────────────────────────────────────────────
-
-@app.post("/twilio/incoming")
-async def twilio_incoming(request: Request):
-    form = await request.form()
-    from_number = normalize_phone(form.get("From", ""))
-    body = form.get("Body", "").strip()
-
-    if not from_number or not body:
-        return Response("", media_type="text/xml")
-
-    conv = await db.get_conversation(config.database_path, from_number)
-    if not conv:
-        logger.warning(f"Received SMS from unknown number: {from_number}")
-        return Response("", media_type="text/xml")
-
-    # Save client message to history
-    await db.append_history(config.database_path, from_number, "user", body)
-
-    # Generate AI reply
-    updated_conv = await db.get_conversation(config.database_path, from_number)
-    try:
-        draft = await ai.generate_reply(
-            config.anthropic_api_key,
-            conv["name"],
-            conv["service"],
-            updated_conv["history"],
-            body,
-        )
-    except Exception as e:
-        logger.error(f"AI reply generation failed: {e}")
-        draft = f"Hi {conv['name']}! Thanks for your message. We'll get back to you shortly."
-
-    # Save as pending
-    pending_id = await db.save_pending(
-        config.database_path, from_number, "inbound_reply", draft
-    )
-
-    # Send to moderation
-    await mod_bot.send_for_moderation(
-        mod_app.bot, config, pending_id, updated_conv,
-        draft, "inbound_reply", client_text=body
-    )
-
-    # Return empty TwiML (we send reply manually after moderation)
-    return Response(
-        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-        media_type="text/xml"
-    )
-
-
-# ─── Twilio status callback ──────────────────────────────────────────────────
-
-@app.post("/twilio/status")
-async def twilio_status(request: Request):
-    form = await request.form()
-    logger.info(f"SMS status: {form.get('MessageStatus')} for {form.get('To')}")
     return Response("ok")
 
 
