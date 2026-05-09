@@ -32,9 +32,11 @@ async def send_lead_with_variants(bot: Bot, config: Config, lead: dict,
         "━━━━━━━━━━━━━━━━━",
     ]
 
+    labels = ["Вариант 1", "Вариант 2", "🔥 Продажный"]
     for i, variant in enumerate(variants, 1):
+        label = labels[i - 1] if i <= len(labels) else f"Вариант {i}"
         lines += [
-            f"*Вариант {i}:*",
+            f"*{label}:*",
             variant,
             "",
         ]
@@ -43,8 +45,12 @@ async def send_lead_with_variants(bot: Bot, config: Config, lead: dict,
 
     text = "\n".join(lines)
 
+    btn_labels = ["📋 Вариант 1", "📋 Вариант 2", "🔥 Продажный"]
     buttons = [
-        [InlineKeyboardButton(f"📋 Скопировать вариант {i}", callback_data=f"copy:{vid}")]
+        [InlineKeyboardButton(
+            btn_labels[i - 1] if i <= len(btn_labels) else f"📋 Вариант {i}",
+            callback_data=f"copy:{vid}"
+        )]
         for i, vid in enumerate(variant_ids, 1)
     ]
     keyboard = InlineKeyboardMarkup(buttons)

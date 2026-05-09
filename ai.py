@@ -1,6 +1,6 @@
 from anthropic import AsyncAnthropic
 
-SYSTEM_PROMPT = """You write SMS responses exactly like Kirill, owner of Fresh Furnish — an upholstery cleaning business in the Seattle/WA area.
+KIRILL_STYLE = """You write SMS responses exactly like Kirill, owner of Fresh Furnish — an upholstery cleaning business in the Seattle/WA area.
 
 Here are real examples of how Kirill writes. Copy this style exactly:
 
@@ -23,24 +23,38 @@ This is Fresh Furnish, we received your request for the couch cleaning after dog
 
 Style rules (follow exactly):
 - Start with time-of-day greeting + client first name + exclamation mark
-- Introduce as "This is Kirill from Fresh furnish" (casual capitalization)
+- Introduce as "This is Kirill from Fresh furnish"
 - Mention what service they requested
-- Ask for the key info needed to give a quote:
-  * For couches/sofas: ask how many seats/cushions
-  * For mattress: ask what size (queen or king)
-  * For chairs: ask how many chairs
-  * For multiple items: ask about each one
+- Ask for info needed for quote (seats/cushions for couches, size for mattress, etc.)
 - End with "Thank you!"
-- Keep it conversational, slightly informal English (like a real person texting, not a corporate message)
+- Conversational, slightly informal English
 - No emojis, no markdown"""
+
+SALES_STYLE = """You write high-converting sales SMS responses for Fresh Furnish — an upholstery cleaning business in Seattle/WA area, owned by Kirill.
+
+Goal: turn a cold lead into a booked appointment as fast as possible.
+
+Sales tactics to use:
+- Create mild urgency (limited slots, weekend availability filling up)
+- Build trust quickly (mention experience, satisfaction guarantee, or that you serve their area)
+- Make it easy to say yes (offer a specific time slot right away)
+- Give a sense of value (fast drying, professional equipment, before/after results)
+- End with a clear call to action — get them to confirm or reply with one piece of info
+
+Style:
+- Start with time-of-day greeting + client first name
+- Introduce as "This is Kirill from Fresh Furnish"
+- Enthusiastic but not pushy
+- Slightly more polished than casual texting
+- Short — 3-4 sentences max
+- No emojis, no markdown, plain text only"""
 
 
 async def generate_variants(api_key: str, name: str, service: str,
-                             client_message: str, n: int = 2) -> list[str]:
-    """Generate n SMS response variants in Kirill's personal style."""
+                             client_message: str) -> list[str]:
+    """Generate 3 SMS variants: 2 in Kirill's natural style + 1 sales-focused."""
     client = AsyncAnthropic(api_key=api_key)
 
-    # Pick greeting based on current hour
     from datetime import datetime
     hour = datetime.now().hour
     if hour < 12:
@@ -50,23 +64,37 @@ async def generate_variants(api_key: str, name: str, service: str,
     else:
         greeting = "Good evening"
 
-    user_prompt = f"""New lead:
+    lead_context = f"""New lead:
 Name: {name}
 Service requested: {service}
 Their message: {client_message}
-Current greeting to use: {greeting}
+Current greeting: {greeting}"""
 
-Write 2 different SMS responses in Kirill's style.
-Both should follow his format but ask slightly different questions or phrase things differently.
-Separate with ---VARIANT--- on its own line.
-Return ONLY the two message texts."""
-
-    message = await client.messages.create(
+    # Generate 2 variants in Kirill's natural style
+    resp1 = await client.messages.create(
         model="claude-3-5-haiku-20241022",
         max_tokens=600,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}]
+        system=KIRILL_STYLE,
+        messages=[{"role": "user", "content": f"""{lead_context}
+
+Write 2 different SMS responses in Kirill's style.
+Separate with ---VARIANT--- on its own line.
+Return ONLY the two message texts."""}]
     )
-    text = message.content[0].text.strip()
-    parts = [v.strip() for v in text.split("---VARIANT---") if v.strip()]
-    return parts[:n] if len(parts) >= n else parts or [text]
+    text1 = resp1.content[0].text.strip()
+    kirill_variants = [v.strip() for v in text1.split("---VARIANT---") if v.strip()]
+
+    # Generate 1 sales-focused variant
+    resp2 = await client.messages.create(
+        model="claude-3-5-haiku-20241022",
+        max_tokens=300,
+        system=SALES_STYLE,
+        messages=[{"role": "user", "content": f"""{lead_context}
+
+Write 1 sales-focused SMS response that creates urgency and pushes toward booking.
+Return ONLY the message text."""}]
+    )
+    sales_variant = resp2.content[0].text.strip()
+
+    all_variants = kirill_variants[:2] + [sales_variant]
+    return all_variants

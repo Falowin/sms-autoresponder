@@ -110,14 +110,13 @@ async def lead_webhook(request: Request):
         lead["service"], lead["message"]
     )
 
-    # Generate 2 AI variants
+    # Generate 3 AI variants (2 natural + 1 sales)
     try:
         variants = await ai.generate_variants(
             config.anthropic_api_key,
             lead["name"],
             lead["service"],
             lead["message"],
-            n=2,
         )
     except Exception as e:
         logger.error(f"AI generation failed: {e}")
