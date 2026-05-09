@@ -190,6 +190,21 @@ async def debug_reset_webhook():
     }
 
 
+# ─── Debug: test AI ──────────────────────────────────────────────────────────
+
+@app.get("/debug/test-ai")
+async def debug_test_ai():
+    import time
+    start = time.time()
+    try:
+        variants = await ai.generate_variants(
+            config.anthropic_api_key, "TestName", "couch", "need cleaning"
+        )
+        return {"ok": True, "count": len(variants), "elapsed": round(time.time() - start, 2), "sample": variants[0][:80]}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "type": type(e).__name__, "elapsed": round(time.time() - start, 2)}
+
+
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
