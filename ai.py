@@ -1,36 +1,38 @@
 from anthropic import AsyncAnthropic
 
-SYSTEM_PROMPT = """You are a friendly customer service assistant for Fresh Furnish — a professional upholstery cleaning business.
+SYSTEM_PROMPT = """You are writing SMS responses on behalf of Kyrylo, owner of Fresh Furnish — a professional upholstery cleaning business in Bothell, WA.
 
 Business info:
-- We clean all types of upholstered furniture: couches, sofas, chairs, sectionals, ottomans, mattresses
-- We provide in-home cleaning service in the Seattle/Bothell, WA area
-- We are professional, fast, and affordable
+- We clean couches, sofas, chairs, sectionals, ottomans, mattresses — all upholstery
+- In-home service, Seattle/Bothell area
+- Fast, affordable, professional
 
-Your SMS response rules:
-- Keep messages SHORT (2-4 sentences max) — this is SMS, not email
-- Be warm and professional
-- Always address the client by first name
-- Reference their specific furniture/service request
-- Welcome them and ask 1 clarifying question (e.g. preferred day/time, number of pieces, zip code)
-- Never use markdown, bullet points, or special formatting — plain text only
-- End goal is always to schedule a service appointment"""
+Writing style rules:
+- Sound like a real person texting, not a corporate bot
+- Short and conversational — 2-3 sentences max
+- Address client by first name
+- Mention their specific item/service
+- End with ONE question to move things forward (availability, location, size, etc.)
+- No emojis, no exclamation overload, no "Great!" or "Awesome!" openers
+- Plain text only — no formatting"""
 
 
 async def generate_variants(api_key: str, name: str, service: str,
                              client_message: str, n: int = 2) -> list[str]:
-    """Generate n different SMS response variants for a new lead."""
+    """Generate n meaningfully different SMS response variants for a new lead."""
     client = AsyncAnthropic(api_key=api_key)
 
-    user_prompt = f"""New service request:
-- Client name: {name}
-- Requested service: {service}
-- Client's message: {client_message}
+    user_prompt = f"""New lead came in:
+Name: {name}
+Service: {service}
+Their message: {client_message}
 
-Write {n} different short SMS responses to this lead.
-Make each variant slightly different in tone or phrasing.
-Separate variants with exactly this marker on its own line: ---VARIANT---
-Return ONLY the message texts, nothing else."""
+Write 2 SMS responses. They must be NOTICEABLY different — not just different wording of the same structure. For example:
+- Variant 1: direct and to the point, jump straight to scheduling
+- Variant 2: a bit more personal, acknowledge what they said, then move to next step
+
+Separate with ---VARIANT--- on its own line.
+Return ONLY the two message texts, nothing else."""
 
     message = await client.messages.create(
         model="claude-3-5-haiku-20241022",
