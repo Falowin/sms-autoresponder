@@ -81,7 +81,16 @@ app = FastAPI(lifespan=lifespan)
 @app.post("/telegram/lead/webhook")
 async def lead_webhook(request: Request):
     data = await request.json()
-    text = data.get("message", {}).get("text", "")
+    # Handle direct messages, channel posts, and group messages
+    msg = (
+        data.get("message")
+        or data.get("channel_post")
+        or data.get("edited_message")
+        or data.get("edited_channel_post")
+        or {}
+    )
+    text = msg.get("text", "")
+    logger.info(f"Lead webhook: update_keys={list(data.keys())}, text_len={len(text)}, preview={text[:80]!r}")
 
     if "New Request:" not in text and "new request:" not in text.lower():
         return Response("ok")
@@ -202,6 +211,40 @@ async def twilio_status(request: Request):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# ─── Debug: webhook info & reset ─────────────────────────────────────────────
+
+@app.get("/debug/webhook-info")
+async def debug_webhook_info():
+    lead_bot = Bot(token=config.telegram_lead_bot_token)
+    info = await lead_bot.get_webhook_info()
+    return {
+        "url": info.url,
+        "has_custom_certificate": info.has_custom_certificate,
+        "pending_update_count": info.pending_update_count,
+        "last_error_date": str(info.last_error_date) if info.last_error_date else None,
+        "last_error_message": info.last_error_message,
+        "max_connections": info.max_connections,
+        "allowed_updates": info.allowed_updates,
+    }
+
+
+@app.post("/debug/reset-webhook")
+async def debug_reset_webhook():
+    lead_bot = Bot(token=config.telegram_lead_bot_token)
+    await lead_bot.delete_webhook(drop_pending_updates=True)
+    await lead_bot.set_webhook(
+        url=f"{config.webhook_base_url}/telegram/lead/webhook",
+        allowed_updates=["message", "channel_post", "edited_message", "edited_channel_post"],
+    )
+    info = await lead_bot.get_webhook_info()
+    return {
+        "status": "reset",
+        "url": info.url,
+        "pending_update_count": info.pending_update_count,
+        "last_error_message": info.last_error_message,
+    }
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
