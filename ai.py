@@ -75,7 +75,7 @@ Current greeting: {greeting}"""
 
     # Generate 2 variants in Kirill's natural style
     resp1 = await client.messages.create(
-        model="claude-3-5-haiku-20241022",
+        model="claude-haiku-4-5-20251001",
         max_tokens=600,
         system=KIRILL_STYLE,
         messages=[{"role": "user", "content": f"""{lead_context}
@@ -89,7 +89,7 @@ Return ONLY the two message texts."""}]
 
     # Generate 1 sales-focused variant
     resp2 = await client.messages.create(
-        model="claude-3-5-haiku-20241022",
+        model="claude-haiku-4-5-20251001",
         max_tokens=300,
         system=SALES_STYLE,
         messages=[{"role": "user", "content": f"""{lead_context}
