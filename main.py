@@ -132,9 +132,12 @@ async def lead_webhook(request: Request):
         variant_ids.append(vid)
 
     # Send to moderation bot with copy buttons
-    await mod_bot.send_lead_with_variants(
-        mod_app.bot, config, lead, variants, variant_ids
-    )
+    try:
+        await mod_bot.send_lead_with_variants(
+            mod_app.bot, config, lead, variants, variant_ids
+        )
+    except Exception as e:
+        logger.error(f"Failed to send lead to mod bot: {e}")
 
     return Response("ok")
 

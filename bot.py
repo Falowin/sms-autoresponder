@@ -1,3 +1,4 @@
+import html
 import logging
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes
@@ -6,6 +7,11 @@ import db
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+
+def _e(text: str) -> str:
+    """Escape text for HTML parse mode."""
+    return html.escape(str(text))
 
 
 async def send_lead_with_variants(bot: Bot, config: Config, lead: dict,
@@ -18,16 +24,16 @@ async def send_lead_with_variants(bot: Bot, config: Config, lead: dict,
     email = lead.get("email", "")
 
     lines = [
-        "🔔 *Новый лид!*",
+        "🔔 <b>Новый лид!</b>",
         "",
-        f"👤 *Имя:* {name}",
-        f"📱 *Телефон:* `{phone}`",
+        f"👤 <b>Имя:</b> {_e(name)}",
+        f"📱 <b>Телефон:</b> <code>{_e(phone)}</code>",
     ]
     if email:
-        lines.append(f"📧 *Email:* {email}")
+        lines.append(f"📧 <b>Email:</b> {_e(email)}")
     lines += [
-        f"🛋 *Услуга:* {service}",
-        f"💬 *Сообщение:* {message}",
+        f"🛋 <b>Услуга:</b> {_e(service)}",
+        f"💬 <b>Сообщение:</b> {_e(message)}",
         "",
         "━━━━━━━━━━━━━━━━━",
     ]
@@ -36,8 +42,8 @@ async def send_lead_with_variants(bot: Bot, config: Config, lead: dict,
     for i, variant in enumerate(variants, 1):
         label = labels[i - 1] if i <= len(labels) else f"Вариант {i}"
         lines += [
-            f"*{label}:*",
-            variant,
+            f"<b>{label}:</b>",
+            _e(variant),
             "",
         ]
 
@@ -58,7 +64,7 @@ async def send_lead_with_variants(bot: Bot, config: Config, lead: dict,
     await bot.send_message(
         chat_id=config.telegram_mod_chat_id,
         text=text,
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=keyboard,
     )
 
