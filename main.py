@@ -23,18 +23,70 @@ mod_app: Application = None
 # ─── Lead parser ────────────────────────────────────────────────────────────
 
 def parse_lead(text: str) -> dict | None:
-    """Parse incoming Telegram lead message into structured data."""
-    patterns = {
-        "name":    r"Name:\s*(.+)",
-        "phone":   r"Phone:\s*(.+)",
-        "email":   r"Email:\s*(.+)",
-        "service": r"Service:\s*(.+)",
-        "message": r"Message:\s*(.+)",
-    }
+    """Parse incoming Telegram lead message into structured data.
+
+    Supports emoji-based format:
+        🔵 Новый лид #N
+        👤 Name
+        📞 Phone
+        ✉️  Email
+        🛠  Service
+        📍 Источник: ...
+        💬 Message (may be multiline)
+        🔗 CRM: url
+
+    Also supports legacy key-value format:
+        Name: ...  Phone: ...  etc.
+    """
     result = {}
-    for key, pattern in patterns.items():
-        m = re.search(pattern, text, re.IGNORECASE)
-        result[key] = m.group(1).strip() if m else ""
+
+    # ── Emoji format ──────────────────────────────────────────────────────────
+    m = re.search(r"👤\s*(.+)", text)
+    if m:
+        result["name"] = m.group(1).strip()
+
+    m = re.search(r"📞\s*(.+)", text)
+    if m:
+        result["phone"] = m.group(1).strip()
+
+    m = re.search(r"✉️\s*(.+)", text)
+    if m:
+        result["email"] = m.group(1).strip()
+
+    m = re.search(r"🛠\s*(.+)", text)
+    if m:
+        result["service"] = m.group(1).strip()
+
+    # Message: everything after 💬 up to (but not including) the 🔗 line
+    m = re.search(r"💬\s*(.+?)(?=\n🔗|\Z)", text, re.DOTALL)
+    if m:
+        result["message"] = m.group(1).strip()
+
+    # ── Legacy key-value format (fallback) ───────────────────────────────────
+    if not result.get("name"):
+        m = re.search(r"Name:\s*(.+)", text, re.IGNORECASE)
+        if m:
+            result["name"] = m.group(1).strip()
+
+    if not result.get("phone"):
+        m = re.search(r"Phone:\s*(.+)", text, re.IGNORECASE)
+        if m:
+            result["phone"] = m.group(1).strip()
+
+    if not result.get("email"):
+        m = re.search(r"Email:\s*(.+)", text, re.IGNORECASE)
+        if m:
+            result["email"] = m.group(1).strip()
+
+    if not result.get("service"):
+        m = re.search(r"Service:\s*(.+)", text, re.IGNORECASE)
+        if m:
+            result["service"] = m.group(1).strip()
+
+    if not result.get("message"):
+        m = re.search(r"Message:\s*(.+)", text, re.IGNORECASE)
+        if m:
+            result["message"] = m.group(1).strip()
 
     if not result.get("phone") or not result.get("name"):
         return None
@@ -93,7 +145,13 @@ async def lead_webhook(request: Request):
     text = msg.get("text", "")
     logger.info(f"Lead webhook: update_keys={list(data.keys())}, text_len={len(text)}, preview={text[:80]!r}")
 
-    if "New Request:" not in text and "new request:" not in text.lower():
+    text_lower = text.lower()
+    is_lead = (
+        "new request:" in text_lower
+        or "новый лид" in text_lower
+        or "👤" in text  # emoji format always has name emoji
+    )
+    if not is_lead:
         return Response("ok")
 
     lead = parse_lead(text)
